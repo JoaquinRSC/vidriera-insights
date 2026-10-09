@@ -110,3 +110,19 @@ def test_market_trend_orders_snapshots():
     })
     trend = analysis.market_trend(snaps)
     assert list(trend["listings"]) == [1, 2]
+
+
+def test_new_versions_skip_other_powertrains_and_rare_sub_models():
+    new = pd.DataFrame({
+        "brand": ["Chevrolet"] * 2 + ["Suzuki"] * 4,
+        "name": ["Captiva XL LTZ 1.5 T", "Captiva EV Premier (60 kWh)",
+                 "Swift Hybrid 1.2 GLX M/T", "Swift Hybrid 1.2 GLX CVT", "Swift Sport 1.4 M/T", "Swift Sport 1.4 A/T"],
+        "price": [34990.0, 31990.0, 22990.0, 24990.0, 30590.0, 33590.0],
+    })
+    used_captiva = pd.DataFrame({"fuel": ["Nafta"] * 5, "version": ["Premier"] * 5, "title": ["Captiva"] * 5})
+    used_swift = pd.DataFrame({"fuel": ["Nafta"] * 5, "version": ["GL 1.2"] * 5, "title": ["Swift"] * 5})
+    captiva = analysis.new_versions_for("Chevrolet", "Captiva", new, used_captiva)
+    swift = analysis.new_versions_for("Suzuki", "Swift", new, used_swift)
+    assert captiva["name"].tolist() == ["Captiva XL LTZ 1.5 T"]  # petrol used cars aren't compared with the EV
+    # "Sport" is a different car; the new Swift is only sold as a hybrid, so those versions stay.
+    assert swift["name"].tolist() == ["Swift Hybrid 1.2 GLX M/T", "Swift Hybrid 1.2 GLX CVT"]

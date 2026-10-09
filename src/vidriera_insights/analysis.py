@@ -122,17 +122,60 @@ def pct_loss(log_slope: float) -> float:
     return round((1 - np.exp(log_slope)) * 100, 1)
 
 
-def new_price_for(brand: str, model: str, new: pd.DataFrame) -> float | None:
-    """Median 0 km list price of a model, matching list entries that start with its name.
+NEW_ELECTRIC = re.compile(r"\bev\b|\bbev\b|kwh|el[eé]ctric")
+NEW_HYBRID = re.compile(r"h[ií]brid|hybrid|\bphev\b|\bhev\b|\bmhev\b|\bdht\b|e-power|\bdm-i\b")
+# Words that, right after the model name, mark a different car rather than a trim.
+SUB_MODELS = {"plus", "sport", "pro", "cross", "max", "sedan", "sedán", "hatch", "cabrio", "coupé", "coupe"}
 
-    The list names versions ("Onix 1.0 Turbo LT", "Onix Plus Premier"), so every
-    version whose name starts with the model counts; the median keeps one pricey
-    trim from dominating.
+
+def powertrain_of(name: str) -> str:
+    name = name.lower()
+    if NEW_ELECTRIC.search(name):
+        return "Eléctrico"
+    if NEW_HYBRID.search(name):
+        return "Híbrido"
+    return "Combustión"
+
+
+def new_versions_for(brand: str, model: str, new: pd.DataFrame, used: pd.DataFrame | None = None) -> pd.DataFrame:
+    """0 km list entries comparable to the used cars of a model.
+
+    Starts from every version whose name begins with the model ("Onix 1.0 LT",
+    "Onix Plus Premier") and, when the used cars are given, drops the versions that
+    are really a different car:
+    - another powertrain (an EV or plug-in version next to petrol used cars);
+    - a sub-model ("Swift Sport") that barely appears among the used listings.
+    A sub-model shared by every 0 km version ("GX3 Pro") is just the model's name.
     """
     same_brand = new[new["brand"] == brand]
     pattern = re.compile(rf"^{re.escape(model.lower())}(\s|$)")
-    matches = same_brand[same_brand["name"].str.lower().str.match(pattern)]
-    return float(matches["price"].median()) if len(matches) else None
+    matches = same_brand[same_brand["name"].str.lower().str.match(pattern)].copy()
+    if used is None or matches.empty:
+        return matches
+
+    rest = matches["name"].str.lower().str.slice(len(model)).str.strip()
+    next_word = rest.str.split().str[0].fillna("")
+    text_cols = [c for c in ("version", "title") if c in used.columns]
+    used_text = used[text_cols].fillna("").agg(" ".join, axis=1).str.lower()
+    for word in set(next_word) & SUB_MODELS:
+        if (next_word == word).all():
+            continue
+        if used_text.str.contains(rf"\b{re.escape(word)}\b").mean() < 0.1:
+            matches = matches[next_word != word]
+            next_word = next_word[next_word != word]
+
+    used_fuel = used["fuel"].mode() if "fuel" in used.columns else pd.Series(dtype="object")
+    target = used_fuel.iloc[0] if len(used_fuel) and used_fuel.iloc[0] in ("Eléctrico", "Híbrido") else "Combustión"
+    same_powertrain = matches[matches["name"].map(powertrain_of) == target]
+    # Some models are now only sold electrified (the new Swift is a mild hybrid):
+    # then the remaining versions are still the closest thing to "this model, new".
+    return same_powertrain if len(same_powertrain) else matches
+
+
+def new_price_for(brand: str, model: str, new: pd.DataFrame, used: pd.DataFrame | None = None) -> float | None:
+    """Median 0 km list price over the comparable versions of a model."""
+    versions = new_versions_for(brand, model, new, used)
+    return float(versions["price"].median()) if len(versions) else None
 
 
 def depreciation_from_new(
@@ -151,18 +194,35 @@ def depreciation_from_new(
     for (brand, model), group in recent.groupby(["brand", "model"]):
         if len(group) < min_used or group["age"].nunique() < 2:
             continue
-        new_price = new_price_for(brand, model, new)
-        if new_price is None:
+        versions = new_versions_for(brand, model, new, group)
+        if versions.empty:
             continue
+        new_price, base_price = versions["price"].median(), versions["price"].min()
         slope, intercept = np.polyfit(group["age"], np.log(group["price"] / new_price), 1)
         if slope >= 0:  # value rising with age means the sample is noise, not a curve
             continue
         kept = {f"kept_{t}y_pct": round(float(np.exp(intercept + slope * t)) * 100, 1) for t in (1, 3, 5)}
-        rows.append({"brand": brand, "model": model, "new_price": new_price, "used_listings": len(group),
-                     "median_used_age": group["age"].median(), **kept})
-    columns = ["brand", "model", "new_price", "used_listings", "median_used_age",
-               "kept_1y_pct", "kept_3y_pct", "kept_5y_pct"]
+        # The used car's trim is unknown, so also read the curve against the cheapest
+        # version: the truth sits between "vs. median version" and "vs. base version".
+        kept_3y_vs_base = round(min(kept["kept_3y_pct"] * new_price / base_price, 100.0), 1)
+        rows.append({"brand": brand, "model": model, "new_price": new_price, "base_price": base_price,
+                     "versions": len(versions), "used_listings": len(group),
+                     "median_used_age": group["age"].median(), **kept, "kept_3y_vs_base_pct": kept_3y_vs_base})
+    columns = ["brand", "model", "new_price", "base_price", "versions", "used_listings", "median_used_age",
+               "kept_1y_pct", "kept_3y_pct", "kept_5y_pct", "kept_3y_vs_base_pct"]
     return pd.DataFrame(rows, columns=columns).sort_values("kept_3y_pct", ascending=False).reset_index(drop=True)
+
+
+def new_versions_table(used: pd.DataFrame, new: pd.DataFrame, models: pd.DataFrame) -> pd.DataFrame:
+    """Which 0 km versions priced each model, so the matching can be audited."""
+    rows = []
+    recent = used.dropna(subset=["model"])
+    for brand, model in models[["brand", "model"]].itertuples(index=False):
+        group = recent[(recent["brand"] == brand) & (recent["model"] == model)]
+        versions = new_versions_for(brand, model, new, group)
+        rows.append({"brand": brand, "model": model,
+                     "versions_used": " · ".join(f"{n} ({p:,.0f})" for n, p in versions[["name", "price"]].values)})
+    return pd.DataFrame(rows, columns=["brand", "model", "versions_used"])
 
 
 def powertrain_summary(df: pd.DataFrame) -> pd.DataFrame:

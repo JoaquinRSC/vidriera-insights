@@ -28,7 +28,7 @@ Full, regenerated-weekly output: [`reports/REPORT.md`](reports/REPORT.md).
 | Brand and segment summaries | pandas group-bys with a minimum sample size per group; missing fuel inferred from the title ("EV", "Hybrid", "Seagull"…) |
 | Overall depreciation curve | median price by age as % of 0–1 year-old cars *in the used stock*; descriptive only, since it mixes models (newer stock skews to SUVs and Chinese brands) |
 | **Per-model depreciation** | two log-linear fits per model: `log(price) ~ age` (total yearly loss a buyer sees) and `log(price) ~ age + km` (loss from age alone, and per 10,000 km) |
-| **Depreciation from new** | `log(used / 0 km list price) ~ age` on cars up to 6 years old (same generation); 0 km price = median of the model's versions in Autoblog's list; free intercept captures the first-owner discount |
+| **Depreciation from new** | `log(used / 0 km list price) ~ age` on cars up to 6 years old (same generation); 0 km price = median of the model’s comparable versions in Autoblog’s list (same powertrain, no rare sub-models such as "Swift Sport"), read against the median and the cheapest version since the used trim is unknown; free intercept captures the first-owner discount |
 | Cost of mileage | within-group regression: prices and km are demeaned per (brand, model, year), so age doesn't leak into the km effect |
 | **Price model** | `HistGradientBoostingRegressor` on brand, model, fuel, gearbox, body, age and km; `log(price)` target; rare models collapsed using training data only; 5-fold cross-validation; permutation importance |
 | Electric & hybrid market | share, price, age and brands; share tracked over time from snapshots |
@@ -58,7 +58,7 @@ pytest && ruff check src tests
 | `src/vidriera_insights/analysis.py` | Pure pandas/NumPy functions — no I/O, unit-tested with small fixtures. |
 | `src/vidriera_insights/model.py` | scikit-learn pipeline, evaluation against the comparables baseline, cross-validation, feature importance. |
 | `src/vidriera_insights/report.py` | CLI that renders the charts and the Markdown report. |
-| `tests/` | 16 tests, including synthetic markets with a known price rule the model and the regressions must recover. |
+| `tests/` | 17 tests, including synthetic markets with a known price rule the model and the regressions must recover. |
 | `.github/workflows/` | CI (ruff + pytest) on every push; a weekly job that refreshes data and commits the new report. |
 
 ## Limitations

@@ -92,6 +92,7 @@ def main() -> None:
     dealers = analysis.dealer_pricing(df, anonymize=args.anonymize_dealers)
     market = analysis.time_on_market(df)
     from_new = analysis.depreciation_from_new(df, new_cars)
+    from_new_versions = analysis.new_versions_table(df, new_cars, from_new)
     list_date = new_cars["list_updated"].dropna().iloc[0] if new_cars["list_updated"].notna().any() else "s/f"
     electrified = analysis.powertrain_summary(df)
     electric_cars = df[df["fuel"] == "Eléctrico"].sort_values("price")[
@@ -171,13 +172,25 @@ Valor que conserva un usado frente al **precio de lista 0 km actual** del mismo 
 `log(precio usado / precio 0 km) ~ antigüedad` sobre autos de hasta 6 años (misma generación).
 El precio 0 km es la mediana de las versiones del modelo en la
 [lista de precios de Autoblog Uruguay](https://www.autoblog.com.uy/p/precios-0km.html)
-({len(new_cars)} versiones, actualizada al {list_date}; precios en USD con IVA). Se descartan los modelos
-con menos de 10 usados recientes o con una curva sin sentido (que *sube* con la edad).
+({len(new_cars)} versiones, actualizada al {list_date}; precios en USD con IVA). Solo cuentan las versiones
+**comparables**: misma motorización que los usados (un Captiva naftero no se compara con el Captiva EV) y sin
+sub-modelos que casi no aparecen entre los usados (Swift Sport). Se descartan los modelos con menos de 10 usados
+recientes o con una curva sin sentido (que *sube* con la edad).
 
-Ojo: es el precio de lista **de hoy**, no el que pagó el primer dueño, y las versiones del usado y del 0 km
-pueden no coincidir. Es una aproximación razonable a "cuánto pierde un auto desde nuevo", no un valor exacto.
+Como no se sabe la versión de cada usado, hay dos lecturas: `kept_3y_pct` contra la **versión mediana** y
+`kept_3y_vs_base_pct` contra la **más barata**. El valor real está entre las dos.
+
+Ojo: es el precio de lista **de hoy**, no el que pagó el primer dueño, y no incluye las bonificaciones que suelen
+dar las concesionarias (lo que exagera un poco la pérdida). Es una aproximación razonable a "cuánto pierde un auto
+desde nuevo", no un valor exacto.
 
 ![](from_new.png)
+
+<details><summary>Versiones 0 km usadas para cada modelo</summary>
+
+{md(from_new_versions, index=False)}
+
+</details>
 
 {md(from_new, index=False) if not from_new.empty else "_Todavía no hay modelos con suficientes usados y precio 0 km._"}
 
