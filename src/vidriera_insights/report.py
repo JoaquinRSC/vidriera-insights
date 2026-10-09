@@ -42,6 +42,25 @@ def bar_chart(series: pd.Series, title: str, xlabel: str, path: Path) -> None:
     save_figure(fig, path)
 
 
+def from_new_chart(kept: pd.Series, today: date, dealers: int, path: Path) -> None:
+    """Value kept at 3 years, naming the years compared so it can't be read as vs. today's 0 km price."""
+    model_year = today.year - 3
+    fig, ax = plt.subplots(figsize=(8, max(3, len(kept) * 0.32)))
+    kept.plot.barh(ax=ax, color=ACCENT)
+    for i, value in enumerate(kept):
+        ax.text(value + 1, i, f"{value:.0f}%", va="center", fontsize=8)
+    ax.set_title(f"Un usado modelo {model_year}, hoy, vs. lo que costaba 0 km en {model_year}")
+    ax.set_xlabel(f"% que conserva del precio 0 km de {model_year}")
+    ax.set_ylabel("")
+    ax.set_xlim(0, 105)
+    ax.invert_yaxis()
+    fig.text(0.01, 0.005, f"Usados: {dealers} automotoras uruguayas, {today:%m/%Y}. Precios 0 km: lista de "
+             f"Autoblog Uruguay de cada año.", fontsize=7, color="#555")
+    fig.tight_layout(rect=(0, 0.02, 1, 1))
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
 def depreciation_chart(curve: pd.DataFrame, path: Path) -> None:
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.plot(curve.index, curve["value_kept_pct"], marker="o", color=ACCENT)
@@ -125,8 +144,7 @@ def main() -> None:
     if not from_new.empty:
         kept = from_new.dropna(subset=["kept_3y_pct"])
         kept = kept.set_index(kept["brand"] + " " + kept["model"])["kept_3y_pct"]
-        bar_chart(kept, "Valor que conserva a los 3 años vs. su precio 0 km", "% del precio 0 km de su año",
-                  OUT / "from_new.png")
+        from_new_chart(kept, today, df["source_name"].nunique(), OUT / "from_new.png")
 
     cv_mean = cv.mean()
     trend_section = (
