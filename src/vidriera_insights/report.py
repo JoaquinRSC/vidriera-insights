@@ -14,10 +14,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from . import analysis, model
-from .fetch import load_cards, load_snapshots, save_snapshot
+from .fetch import load_cards, load_new_cars, load_snapshots, save_snapshot
 
 ROOT = Path(__file__).resolve().parents[2]
 CACHE = ROOT / "data" / "vehicle_cards.csv"
+NEW_CARS = ROOT / "data" / "new_cars.csv"
 SNAPSHOTS = ROOT / "data" / "snapshots"
 OUT = ROOT / "reports"
 ACCENT = "#2457f5"
@@ -79,6 +80,7 @@ def main() -> None:
     if args.refresh:
         save_snapshot(raw, SNAPSHOTS, today)
     df = analysis.clean(raw, today.year)
+    new_cars = load_new_cars(NEW_CARS, refresh=args.refresh)
     OUT.mkdir(exist_ok=True)
 
     brands = analysis.brand_summary(df)
@@ -89,8 +91,14 @@ def main() -> None:
     km_effect = analysis.mileage_effect(df)
     dealers = analysis.dealer_pricing(df, anonymize=args.anonymize_dealers)
     market = analysis.time_on_market(df)
+    from_new = analysis.depreciation_from_new(df, new_cars)
+    list_date = new_cars["list_updated"].dropna().iloc[0] if new_cars["list_updated"].notna().any() else "s/f"
+    electrified = analysis.powertrain_summary(df)
+    electric_cars = df[df["fuel"] == "Eléctrico"].sort_values("price")[
+        ["brand", "model", "year", "mileage_km", "price", "source_name"]]
     snapshots = load_snapshots(SNAPSHOTS)
-    trend = analysis.market_trend(snapshots) if not snapshots.empty else pd.DataFrame()
+    trend = (analysis.market_trend(analysis.clean(snapshots, today.year)) if not snapshots.empty
+             else pd.DataFrame())
 
     cv = model.cross_validate(df)
     _, evaluation, test = model.train_and_evaluate(df)
@@ -110,6 +118,10 @@ def main() -> None:
     bar_chart(dealers["median_vs_fair_pct"], "Automotoras: precio vs. mercado", "% mediano vs. precio justo",
               OUT / "dealers.png")
     prediction_chart(test, OUT / "predictions.png")
+    if not from_new.empty:
+        kept = from_new.set_index(from_new["brand"] + " " + from_new["model"])["kept_3y_pct"]
+        bar_chart(kept, "Valor que conserva a los 3 años vs. precio 0 km actual", "% del precio 0 km",
+                  OUT / "from_new.png")
 
     cv_mean = cv.mean()
     trend_section = (
@@ -128,25 +140,67 @@ a partir de los datos públicos de [Vidriera](https://vidriera-uy.vercel.app).
 {md(brands.head(12).round(0))}
 
 ## 2. Depreciación
+
+### Curva general
+Mediana del precio publicado según la antigüedad, como % de la mediana de los autos de **0–1 año que hoy
+están en el stock usado** (no del precio de lista 0 km). Mezcla modelos distintos: los autos nuevos del
+stock son más SUVs y marcas chinas que los viejos, así que la curva **exagera** la caída. Para comparar
+autos de verdad, ver las tablas por modelo.
+
 ![](depreciation.png)
 
 {md(curve)}
 
-### Por modelo
-Pendiente de `log(precio) ~ antigüedad` por modelo (autos de hasta 12 años, modelos con ≥20 publicaciones).
-Un valor bajo significa que el modelo **retiene mejor su valor**.
+### Por modelo, separando edad y kilometraje
+Dos regresiones log-lineales por modelo (autos de hasta 12 años, modelos con ≥20 publicaciones):
+
+- `total_yearly_loss_pct`: `log(precio) ~ antigüedad`. La pérdida anual que ve un comprador, que mezcla
+  envejecer y sumar kilómetros.
+- `yearly_loss_pct`: `log(precio) ~ antigüedad + km`. La pérdida **solo por edad**, a igual kilometraje.
+- `loss_per_10k_km_pct`: en la misma regresión, la pérdida por cada **10.000 km** extra a igual edad.
+
+Un valor bajo significa que el modelo **retiene mejor su valor**. Muestras chicas dan coeficientes ruidosos
+(un valor negativo en km indica justamente eso).
 
 ![](models.png)
 
 {md(by_model, index=False)}
 
+### Desde 0 km
+Valor que conserva un usado frente al **precio de lista 0 km actual** del mismo modelo, con
+`log(precio usado / precio 0 km) ~ antigüedad` sobre autos de hasta 6 años (misma generación).
+El precio 0 km es la mediana de las versiones del modelo en la
+[lista de precios de Autoblog Uruguay](https://www.autoblog.com.uy/p/precios-0km.html)
+({len(new_cars)} versiones, actualizada al {list_date}; precios en USD con IVA). Se descartan los modelos
+con menos de 10 usados recientes o con una curva sin sentido (que *sube* con la edad).
+
+Ojo: es el precio de lista **de hoy**, no el que pagó el primer dueño, y las versiones del usado y del 0 km
+pueden no coincidir. Es una aproximación razonable a "cuánto pierde un auto desde nuevo", no un valor exacto.
+
+![](from_new.png)
+
+{md(from_new, index=False) if not from_new.empty else "_Todavía no hay modelos con suficientes usados y precio 0 km._"}
+
+
 ## 3. Kilometraje
 A igual marca, modelo y año, cada **10.000 km extra** cambian el precio en **USD {km_effect:,.0f}**.
 
 ## 4. Combustible y caja
+El combustible se completa desde el título cuando el aviso no lo indica (por ejemplo "EV", "Híbrido",
+"Seagull"), porque cerca de un cuarto de los avisos no lo cargan.
+
 {md(fuel)}
 
 {md(gearbox)}
+
+### Eléctricos e híbridos
+{md(electrified) if not electrified.empty else "_Sin datos._"}
+
+Los eléctricos usados son casi todos de **2024–2026**: el mercado de eléctricos de segunda mano en Uruguay
+recién empieza. Con tan pocos autos no tiene sentido estimar su depreciación todavía; la sección 8 sigue
+cómo crece su participación semana a semana.
+
+{md(electric_cars, index=False)}
 
 ## 5. Modelo de precio (machine learning)
 Gradient boosting (`HistGradientBoostingRegressor`) sobre marca, modelo, combustible, caja, carrocería,
@@ -187,6 +241,8 @@ Negativo = más barata que autos comparables.
 > a medida que se acumulan semanas de historia (días publicados y rebajas de precio).
 
 ## 8. Evolución del mercado
+Stock, precio mediano y % de eléctricos e híbridos en cada foto semanal.
+
 {trend_section}
 """
     (OUT / "REPORT.md").write_text(report, encoding="utf-8")

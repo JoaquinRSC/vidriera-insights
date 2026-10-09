@@ -44,12 +44,49 @@ def test_dealer_pricing_requires_minimum_sample():
     assert table.loc["Big", "share_above_fair"] == 100.0
 
 
-def test_model_depreciation_recovers_constant_yearly_loss():
-    # Price drops exactly 10% per year -> yearly_loss_pct must be 10.
-    rows = [{"brand": "Fiat", "model": "Uno", "age": age, "year": 2026 - age, "price": 20000 * 0.9**age}
-            for age in range(0, 8) for _ in range(3)]
-    table = analysis.model_depreciation(make_df(rows))
-    assert table.loc[0, "yearly_loss_pct"] == pytest.approx(10.0)
+def test_model_depreciation_separates_age_from_mileage():
+    # Price = 20000 * 0.95^age * 0.97^(km / 10k), with km varying independently of age.
+    rows = []
+    for age in range(0, 8):
+        for km in (10_000 * age, 10_000 * age + 30_000, 10_000 * age + 60_000):
+            rows.append({"brand": "Fiat", "model": "Uno", "age": age, "year": 2026 - age, "mileage_km": km,
+                         "price": 20000 * 0.95**age * 0.97 ** (km / 10_000)})
+    row = analysis.model_depreciation(make_df(rows)).iloc[0]
+    assert row["yearly_loss_pct"] == pytest.approx(5.0, abs=0.1)
+    assert row["loss_per_10k_km_pct"] == pytest.approx(3.0, abs=0.1)
+    # The age-only fit absorbs the extra 10k km per year: 1 - 0.95 * 0.97 = 7.85%.
+    assert row["total_yearly_loss_pct"] == pytest.approx(7.85, abs=0.1)
+
+
+def test_infer_fuel_fills_only_missing_values():
+    df = pd.DataFrame({
+        "fuel": [None, None, "Nafta", None],
+        "title": ["BYD Seagull 2025", "Toyota Corolla Cross Hybrid", "Chevrolet Onix EV look", "Chevrolet Onix"],
+        "version": [None, None, None, "1.0 Turbo"],
+    })
+    assert analysis.infer_fuel(df).tolist()[:3] == ["Eléctrico", "Híbrido", "Nafta"]
+    assert pd.isna(analysis.infer_fuel(df).iloc[3])  # "Chevrolet" must not match "hev"
+
+
+def test_depreciation_from_new_matches_versions_by_prefix():
+    new = pd.DataFrame({"brand": ["Chevrolet"] * 3, "name": ["Onix 1.0 LT", "Onix 1.0 Premier", "Onix Plus LTZ"],
+                        "price": [20000.0, 24000.0, 26000.0]})
+    assert analysis.new_price_for("Chevrolet", "Onix", new) == 24000.0  # median of the three
+    assert analysis.new_price_for("Chevrolet", "Tracker", new) is None
+    # Used Onix keep 80% at age 1 and lose 10% per year after that.
+    rows = [{"brand": "Chevrolet", "model": "Onix", "age": a, "year": 2026 - a,
+             "price": 24000 * 0.8 * 0.9 ** (a - 1)} for a in (1, 2, 3, 4) for _ in range(3)]
+    table = analysis.depreciation_from_new(make_df(rows), new)
+    assert table.loc[0, "kept_1y_pct"] == pytest.approx(80.0, abs=0.1)
+    assert table.loc[0, "kept_3y_pct"] == pytest.approx(64.8, abs=0.1)
+
+
+def test_powertrain_summary_counts_share():
+    rows = [{"brand": "Byd", "price": 20000, "year": 2025, "fuel": "Eléctrico"}] * 2
+    rows += [{"brand": "Fiat", "price": 10000, "year": 2020, "fuel": "Nafta"}] * 8
+    table = analysis.powertrain_summary(make_df(rows))
+    assert table.loc["Eléctrico", "share_pct"] == 20.0
+    assert "Híbrido" not in table.index
 
 
 def test_segment_summary_ignores_missing_and_small_groups():

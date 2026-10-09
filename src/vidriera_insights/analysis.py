@@ -1,9 +1,27 @@
 """Pure pandas analyses over the vehicle_cards dataset (no I/O, easy to test)."""
 
+import re
+
 import numpy as np
 import pandas as pd
 
 MIN_SAMPLE = 10  # groups smaller than this are too noisy to report
+
+# About a quarter of listings don't state the fuel; EVs and hybrids usually say so in the title.
+ELECTRIC_HINTS = re.compile(r"\bel[eé]ctric|\bev\b|\bbev\b|\bseagull\b|\bdolphin\b|\byuan\b|\batto\b|\bleaf\b")
+HYBRID_HINTS = re.compile(r"h[ií]brid|\bhybrid\b|\bhev\b|\bphev\b|\bmhev\b|e-power|\bdm-i\b")
+
+
+def infer_fuel(df: pd.DataFrame) -> pd.Series:
+    """Fuel as listed, or Eléctrico/Híbrido when only the title gives it away."""
+    text_cols = [c for c in ("title", "version") if c in df.columns]
+    if not text_cols:
+        return df["fuel"]
+    text = df[text_cols].fillna("").agg(" ".join, axis=1).str.lower()
+    inferred = pd.Series(np.nan, index=df.index, dtype="object")
+    inferred[text.str.contains(HYBRID_HINTS)] = "Híbrido"
+    inferred[text.str.contains(ELECTRIC_HINTS)] = "Eléctrico"
+    return df["fuel"].fillna(inferred)
 
 
 def clean(df: pd.DataFrame, today_year: int) -> pd.DataFrame:
@@ -18,6 +36,8 @@ def clean(df: pd.DataFrame, today_year: int) -> pd.DataFrame:
     out["model"] = out["model"].str.strip().str.title()
     for col in {"fuel", "transmission", "body_type"} & set(out.columns):
         out[col] = out[col].replace({"—": np.nan, "": np.nan})
+    if "fuel" in out.columns:
+        out["fuel"] = infer_fuel(out)
     return out
 
 
@@ -59,10 +79,14 @@ def depreciation_curve(df: pd.DataFrame, max_age: int = 15) -> pd.DataFrame:
 def model_depreciation(
     df: pd.DataFrame, min_listings: int = 20, min_years: int = 4, max_age: int = 12
 ) -> pd.DataFrame:
-    """Yearly value loss per model, fitted as log(price) = a + b * age.
+    """Yearly value loss per model, separating age from mileage.
 
-    A log-linear fit turns the slope into a constant percentage per year, which is
-    how depreciation behaves and lets a USD 8k and a USD 40k model be compared.
+    Two log-linear fits per model:
+    - ``log(price) = a + b*age`` gives the *total* yearly loss a buyer sees, which
+      mixes getting older with accumulating kilometres;
+    - ``log(price) = a + b*age + c*km`` holds mileage fixed, so ``b`` is the loss
+      from age alone and ``c`` the loss per extra 10,000 km.
+    Logs turn slopes into constant percentages, so a USD 8k and a USD 40k model compare.
     """
     rows = []
     # Very old cars hit a price floor and would flatten every curve, so they're left out.
@@ -70,16 +94,94 @@ def model_depreciation(
     for (brand, model), group in recent.groupby(["brand", "model"]):
         if len(group) < min_listings or group["age"].nunique() < min_years:
             continue
-        slope, _ = np.polyfit(group["age"], np.log(group["price"]), 1)
-        rows.append({
+        total_slope, _ = np.polyfit(group["age"], np.log(group["price"]), 1)
+        row = {
             "brand": brand,
             "model": model,
             "listings": len(group),
             "median_price": group["price"].median(),
-            "yearly_loss_pct": round((1 - np.exp(slope)) * 100, 1),
+            "total_yearly_loss_pct": pct_loss(total_slope),
+            "yearly_loss_pct": np.nan,
+            "loss_per_10k_km_pct": np.nan,
+        }
+        with_km = group.dropna(subset=["mileage_km"])
+        if len(with_km) >= min_listings and with_km["age"].nunique() >= min_years:
+            X = np.column_stack([np.ones(len(with_km)), with_km["age"], with_km["mileage_km"] / 10_000])
+            (_, age_slope, km_slope), *_ = np.linalg.lstsq(X, np.log(with_km["price"]), rcond=None)
+            row["yearly_loss_pct"] = pct_loss(age_slope)
+            row["loss_per_10k_km_pct"] = pct_loss(km_slope)
+        rows.append(row)
+    columns = ["brand", "model", "listings", "median_price", "yearly_loss_pct", "loss_per_10k_km_pct",
+               "total_yearly_loss_pct"]
+    table = pd.DataFrame(rows, columns=columns)
+    return table.sort_values(["yearly_loss_pct", "total_yearly_loss_pct"]).reset_index(drop=True)
+
+
+def pct_loss(log_slope: float) -> float:
+    """Turn a slope on log(price) into the % of value lost per unit."""
+    return round((1 - np.exp(log_slope)) * 100, 1)
+
+
+def new_price_for(brand: str, model: str, new: pd.DataFrame) -> float | None:
+    """Median 0 km list price of a model, matching list entries that start with its name.
+
+    The list names versions ("Onix 1.0 Turbo LT", "Onix Plus Premier"), so every
+    version whose name starts with the model counts; the median keeps one pricey
+    trim from dominating.
+    """
+    same_brand = new[new["brand"] == brand]
+    pattern = re.compile(rf"^{re.escape(model.lower())}(\s|$)")
+    matches = same_brand[same_brand["name"].str.lower().str.match(pattern)]
+    return float(matches["price"].median()) if len(matches) else None
+
+
+def depreciation_from_new(
+    used: pd.DataFrame, new: pd.DataFrame, min_used: int = 10, max_age: int = 6
+) -> pd.DataFrame:
+    """Value kept vs. the current 0 km list price, for models sold both new and used.
+
+    Fits ``log(used_price / new_price) = a + b*age`` per model and reads the curve at
+    1, 3 and 5 years. The intercept is kept free: the jump from "0 km" to "used" (the
+    first-owner discount) is real and shouldn't be forced to zero. Only cars up to
+    ``max_age`` are used, so an older generation of the model doesn't drag the
+    comparison against today's list price.
+    """
+    rows = []
+    recent = used[used["age"].between(0, max_age)].dropna(subset=["model"])
+    for (brand, model), group in recent.groupby(["brand", "model"]):
+        if len(group) < min_used or group["age"].nunique() < 2:
+            continue
+        new_price = new_price_for(brand, model, new)
+        if new_price is None:
+            continue
+        slope, intercept = np.polyfit(group["age"], np.log(group["price"] / new_price), 1)
+        if slope >= 0:  # value rising with age means the sample is noise, not a curve
+            continue
+        kept = {f"kept_{t}y_pct": round(float(np.exp(intercept + slope * t)) * 100, 1) for t in (1, 3, 5)}
+        rows.append({"brand": brand, "model": model, "new_price": new_price, "used_listings": len(group),
+                     "median_used_age": group["age"].median(), **kept})
+    columns = ["brand", "model", "new_price", "used_listings", "median_used_age",
+               "kept_1y_pct", "kept_3y_pct", "kept_5y_pct"]
+    return pd.DataFrame(rows, columns=columns).sort_values("kept_3y_pct", ascending=False).reset_index(drop=True)
+
+
+def powertrain_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """Electric and hybrid stock: share of the market, price, age and leading brands."""
+    total = len(df)
+    rows = []
+    for fuel in ("Eléctrico", "Híbrido"):
+        part = df[df["fuel"] == fuel]
+        if part.empty:
+            continue
+        rows.append({
+            "fuel": fuel,
+            "listings": len(part),
+            "share_pct": round(len(part) / total * 100, 2),
+            "median_price": part["price"].median(),
+            "median_year": part["year"].median(),
+            "top_brands": ", ".join(f"{b} ({n})" for b, n in part["brand"].value_counts().head(4).items()),
         })
-    columns = ["brand", "model", "listings", "median_price", "yearly_loss_pct"]
-    return pd.DataFrame(rows, columns=columns).sort_values("yearly_loss_pct").reset_index(drop=True)
+    return pd.DataFrame(rows).set_index("fuel") if rows else pd.DataFrame()
 
 
 def mileage_effect(df: pd.DataFrame) -> float:
@@ -126,9 +228,14 @@ def time_on_market(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def market_trend(snapshots: pd.DataFrame) -> pd.DataFrame:
-    """Stock size and median price per snapshot date (one row per saved run)."""
-    return (
+    """Stock size, median price and electrified share per snapshot date."""
+    trend = (
         snapshots.groupby("snapshot_date")
         .agg(listings=("id", "count"), median_price=("price", "median"))
         .sort_index()
     )
+    if "fuel" in snapshots.columns:
+        share = snapshots.assign(ev=snapshots["fuel"].eq("Eléctrico"), hybrid=snapshots["fuel"].eq("Híbrido"))
+        by_day = share.groupby("snapshot_date")[["ev", "hybrid"]].mean().mul(100).round(2)
+        trend = trend.join(by_day.rename(columns={"ev": "electric_pct", "hybrid": "hybrid_pct"}))
+    return trend
