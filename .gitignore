@@ -1,4 +1,7 @@
 .venv/
 __pycache__/
-data/
 *.egg-info/
+.pytest_cache/
+.ruff_cache/
+# Full download is a local cache; dated snapshots are versioned for trends.
+data/vehicle_cards.csv

@@ -42,3 +42,34 @@ def test_dealer_pricing_requires_minimum_sample():
     table = analysis.dealer_pricing(make_df(rows))
     assert list(table.index) == ["Big"]
     assert table.loc["Big", "share_above_fair"] == 100.0
+
+
+def test_model_depreciation_recovers_constant_yearly_loss():
+    # Price drops exactly 10% per year -> yearly_loss_pct must be 10.
+    rows = [{"brand": "Fiat", "model": "Uno", "age": age, "year": 2026 - age, "price": 20000 * 0.9**age}
+            for age in range(0, 8) for _ in range(3)]
+    table = analysis.model_depreciation(make_df(rows))
+    assert table.loc[0, "yearly_loss_pct"] == pytest.approx(10.0)
+
+
+def test_segment_summary_ignores_missing_and_small_groups():
+    rows = [{"brand": "Fiat", "price": 10000, "age": 5, "fuel": "Nafta"}] * 12
+    rows += [{"brand": "Fiat", "price": 30000, "age": 2, "fuel": "Híbrido"}] * 2
+    rows += [{"brand": "Fiat", "price": 1, "age": 1, "fuel": None}] * 20
+    table = analysis.segment_summary(make_df(rows), "fuel")
+    assert list(table.index) == ["Nafta"]
+
+
+def test_dealer_pricing_anonymizes_names():
+    rows = [{"brand": "Fiat", "price": 1, "year": 2020, "source_name": "Real Name", "price_vs_fair_pct": 1.0}] * 12
+    table = analysis.dealer_pricing(make_df(rows), anonymize=True)
+    assert list(table.index) == ["Automotora A"]
+
+
+def test_market_trend_orders_snapshots():
+    snaps = pd.DataFrame({
+        "id": [1, 2, 3], "price": [10, 20, 30],
+        "snapshot_date": pd.to_datetime(["2026-10-16", "2026-10-09", "2026-10-16"]),
+    })
+    trend = analysis.market_trend(snaps)
+    assert list(trend["listings"]) == [1, 2]

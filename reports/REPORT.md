@@ -1,9 +1,9 @@
 # Vidriera Insights — 09/10/2026
 
-Análisis de 2,303 autos usados activos (USD) de 27 automotoras uruguayas,
+Análisis de **2,303 autos usados activos** (USD) de **27 automotoras** uruguayas,
 a partir de los datos públicos de [Vidriera](https://vidriera-uy.vercel.app).
 
-## Marcas con más stock
+## 1. Marcas con más stock
 ![](brands.png)
 
 | brand      |   listings |   median_price |   median_year |   median_km |
@@ -21,7 +21,7 @@ a partir de los datos públicos de [Vidriera](https://vidriera-uy.vercel.app).
 | Toyota     |         44 |          20245 |          2019 |      160000 |
 | Geely      |         37 |          11890 |          2020 |       91048 |
 
-## Depreciación
+## 2. Depreciación
 ![](depreciation.png)
 
 |   age |   listings |   median_price |   value_kept_pct |
@@ -43,10 +43,97 @@ a partir de los datos públicos de [Vidriera](https://vidriera-uy.vercel.app).
 |    14 |         75 |           9900 |             47.4 |
 |    15 |         63 |           8990 |             43.1 |
 
-## Kilometraje
-A igual marca, modelo y año, cada **10.000 km extra** cambian el precio en **USD -194**.
+### Por modelo
+Pendiente de `log(precio) ~ antigüedad` por modelo (autos de hasta 12 años, modelos con ≥20 publicaciones).
+Un valor bajo significa que el modelo **retiene mejor su valor**.
 
-## Cómo pone precio cada automotora
+![](models.png)
+
+| brand      | model    |   listings |   median_price |   yearly_loss_pct |
+|:-----------|:---------|-----------:|---------------:|------------------:|
+| Volkswagen | Gol      |         27 |          11900 |               2.4 |
+| Citroën    | C3       |         28 |          11900 |               2.6 |
+| Renault    | Kwid     |         42 |           9895 |               2.7 |
+| Renault    | Sandero  |         24 |           9700 |               3.1 |
+| Hyundai    | Hb20     |         46 |          14990 |               3.5 |
+| Chevrolet  | Prisma   |         38 |          10990 |               3.7 |
+| Renault    | Duster   |         26 |          12890 |               4.1 |
+| Chevrolet  | Joy      |         63 |          12290 |               4.2 |
+| Fiat       | Uno      |         35 |           8900 |               4.3 |
+| Ford       | Ecosport |         34 |          13245 |               4.5 |
+| Suzuki     | Celerio  |         27 |          11490 |               4.8 |
+| Peugeot    | 208      |         53 |          13500 |               5.2 |
+| Fiat       | Strada   |         45 |          15690 |               5.2 |
+| Chevrolet  | Onix     |        209 |          13990 |               5.3 |
+| Fiat       | Mobi     |         20 |          10150 |               5.4 |
+| Nissan     | Kicks    |         35 |          18990 |               6   |
+| Renault    | Oroch    |         39 |          15490 |               6.1 |
+| Peugeot    | 2008     |         23 |          14990 |               6.4 |
+| Chevrolet  | Tracker  |         62 |          18390 |               6.5 |
+| Nissan     | Versa    |         30 |          16245 |               7.2 |
+
+## 3. Kilometraje
+A igual marca, modelo y año, cada **10.000 km extra** cambian el precio en **USD -193**.
+
+## 4. Combustible y caja
+| fuel      |   listings |   median_price |   median_age |
+|:----------|-----------:|---------------:|-------------:|
+| Híbrido   |         21 |          31500 |            3 |
+| Diésel    |         78 |          28745 |            7 |
+| Eléctrico |         17 |          21990 |            1 |
+| Nafta     |       1569 |          12990 |            7 |
+
+| transmission   |   listings |   median_price |   median_age |
+|:---------------|-----------:|---------------:|-------------:|
+| Automática     |        383 |          18490 |            5 |
+| Manual         |        740 |          10990 |            8 |
+
+## 5. Modelo de precio (machine learning)
+Gradient boosting (`HistGradientBoostingRegressor`) sobre marca, modelo, combustible, caja, carrocería,
+antigüedad y kilometraje, con objetivo `log(precio)`. Validación cruzada de 5 particiones:
+
+| Métrica | Valor |
+|---|---|
+| Error medio (todos los autos) | **15.8%** (USD 2,643) |
+| Error en autos con comparables — modelo | **10.6%** |
+| Error en autos con comparables — precio justo de Vidriera | 10.6% |
+| Autos que el método de comparables puede tasar | 56% |
+| Error del modelo en autos **sin** comparables | 23.5% |
+
+El modelo **iguala** al método de comparables donde éste funciona y además **tasa el 100% del stock**,
+incluidos los modelos raros que no tienen suficientes autos parecidos.
+
+![](predictions.png)
+
+**Qué pesa más en el precio** (caída del R² al desordenar cada variable):
+
+|              |   importancia_pct |
+|:-------------|------------------:|
+| age          |              43.4 |
+| brand        |              22.8 |
+| model        |              15.8 |
+| fuel         |               8.8 |
+| mileage_km   |               5.4 |
+| transmission |               2.9 |
+| body_type    |               0.9 |
+
+**Candidatos a revisar**: autos del set de test publicados más por debajo de lo que espera el modelo
+(una señal para mirar de cerca, no una garantía: el aviso puede tener detalles que los datos no capturan).
+
+| brand      | model    |   year |   mileage_km |   price |   predicted |   discount_pct |
+|:-----------|:---------|-------:|-------------:|--------:|------------:|---------------:|
+| Volkswagen | Polo     |   2025 |        20407 |   16490 |       31137 |           47   |
+| Renault    | Oroch    |   2020 |       167742 |    9990 |       17640 |           43.4 |
+| Volkswagen | Polo     |   2022 |       127380 |   15500 |       26218 |           40.9 |
+| Peugeot    | 208      |   2020 |       184467 |   10200 |       15730 |           35.2 |
+| Toyota     | Hilux    |   2014 |       255593 |   16900 |       25460 |           33.6 |
+| Nissan     | Frontier |   2024 |        79479 |   27990 |       41450 |           32.5 |
+| Hyundai    | H1       |   2010 |       350000 |    7990 |       11707 |           31.7 |
+| Peugeot    | 2008     |   2019 |        49252 |   12900 |       18898 |           31.7 |
+| Gwm        | Wingle 5 |   2015 |       262407 |    7800 |       11389 |           31.5 |
+| Chery      | Tiggo 2  |   2023 |        10657 |   14900 |       21504 |           30.7 |
+
+## 6. Cómo pone precio cada automotora
 Negativo = más barata que autos comparables.
 ![](dealers.png)
 
@@ -74,7 +161,7 @@ Negativo = más barata que autos comparables.
 | Nicolás Tejera Automóviles |        117 |                10.5  |               66.7 |
 | Chevrolet Florida          |         31 |                15.9  |               77.4 |
 
-## ¿Los autos caros tardan más en venderse?
+## 7. ¿Los autos caros tardan más en venderse?
 | bucket    |   listings |   median_days |   share_with_price_cut |
 |:----------|-----------:|--------------:|-----------------------:|
 | <-10%     |        262 |             2 |                    1.1 |
@@ -85,3 +172,6 @@ Negativo = más barata que autos comparables.
 
 > Vidriera registra datos desde el 07/10/2026: esta tabla gana sentido
 > a medida que se acumulan semanas de historia (días publicados y rebajas de precio).
+
+## 8. Evolución del mercado
+_Se necesita más de una corrida con `--refresh` para ver la evolución._

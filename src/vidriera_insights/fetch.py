@@ -1,5 +1,6 @@
 """Download the public `vehicle_cards` view from Vidriera's Supabase REST API."""
 
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -15,20 +16,20 @@ COLUMNS = [
     "mileage_km", "fuel", "transmission", "body_type", "first_price",
     "price_changes", "fair_price", "fair_sample_size", "price_vs_fair_pct",
 ]
+SNAPSHOT_COLUMNS = ["id", "source_id", "price", "currency", "status", "brand", "model", "year", "mileage_km"]
 PAGE_SIZE = 1000
 
 
 def fetch_cards(session: requests.Session | None = None) -> pd.DataFrame:
     """Fetch every row, paging with the Range header (PostgREST caps pages at 1000)."""
     session = session or requests.Session()
-    headers = {"apikey": PUBLISHABLE_KEY}
     rows: list[dict] = []
     start = 0
     while True:
         response = session.get(
             f"{SUPABASE_URL}/rest/v1/vehicle_cards",
             params={"select": ",".join(COLUMNS), "order": "id"},
-            headers={**headers, "Range": f"{start}-{start + PAGE_SIZE - 1}"},
+            headers={"apikey": PUBLISHABLE_KEY, "Range": f"{start}-{start + PAGE_SIZE - 1}"},
             timeout=30,
         )
         response.raise_for_status()
@@ -42,9 +43,24 @@ def fetch_cards(session: requests.Session | None = None) -> pd.DataFrame:
 
 def load_cards(cache: Path, refresh: bool = False) -> pd.DataFrame:
     """Return the dataset, downloading it only when there is no cached CSV."""
-    if cache.exists() and not refresh:
-        return pd.read_csv(cache, parse_dates=["first_seen_at"])
-    df = fetch_cards()
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(cache, index=False)
+    if refresh or not cache.exists():
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        fetch_cards().to_csv(cache, index=False)
     return pd.read_csv(cache, parse_dates=["first_seen_at"])
+
+
+def save_snapshot(df: pd.DataFrame, folder: Path, day: date) -> Path:
+    """Store a slim daily copy so market trends can be computed over time."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{day:%Y-%m-%d}.csv.gz"
+    df[SNAPSHOT_COLUMNS].to_csv(path, index=False)
+    return path
+
+
+def load_snapshots(folder: Path) -> pd.DataFrame:
+    """Concatenate every saved snapshot, tagged with its date."""
+    frames = [
+        pd.read_csv(path).assign(snapshot_date=pd.Timestamp(path.name.removesuffix(".csv.gz")))
+        for path in sorted(folder.glob("*.csv.gz"))
+    ]
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
