@@ -1,7 +1,7 @@
 # Vidriera Insights
 
 Data analysis and price modelling of the Uruguayan used-car market, in Python, on top of the public data from
-[Vidriera](https://vidriera-uy.vercel.app) — my aggregator of **~2,300 cars from 27 dealerships** — plus current
+[Vidriera](https://vidriera-uy.vercel.app) — my aggregator of **~2,600 cars from 35 dealerships** — plus current
 0 km list prices from [Autoblog Uruguay](https://www.autoblog.com.uy/p/precios-0km.html).
 
 **Try the estimator: [vidriera-insights.vercel.app](https://vidriera-insights.vercel.app)** — pick a car, get its
@@ -11,17 +11,17 @@ estimated price with a calibrated 80% range, its depreciation and the similar ca
 
 ## Key findings (October 2026)
 
-- **A machine-learning price model matches the comparables method (10.6% vs 10.6% error) and prices 100% of
-  the stock** — the comparables method can only price ~56% of cars (the rest have too few similar listings).
+- **A machine-learning price model stays within half a point of the comparables method (11.0% vs 10.5% error)
+  and prices 100% of the stock** — the comparables method can only price ~57% of cars (the rest have too few similar listings).
 - **Value kept vs. what the car cost new in its year varies a lot**: after 3 years a Fiat Strada keeps ~85%, a
-  Chevrolet Tracker ~68% and a Peugeot 208 ~63%; the Onix holds a flat ~72% at any age because used prices
+  Chevrolet Tracker ~69% and a Peugeot 208 ~62%; the Onix holds a flat ~72% at any age because used prices
   tracked its rising 0 km price (USD 19,290 in 2019 → 24,140 in 2026).
 - **Separating age from mileage**, popular models lose between ~1.6% and ~7% per year from age alone, plus
-  ~1–2.5% per extra 10,000 km.
+  ~1–3% per extra 10,000 km.
 - **Within the same model and year, every extra 10,000 km costs ≈ USD 190.**
-- **Electric cars are still rare in the used market**: 19 cars (0.8%), almost all 2024–2026 and led by BYD;
-  hybrids are 33 (1.4%). Weekly snapshots track how that share grows.
-- **Dealers price very differently**: the cheapest list ~7–11% below comparable cars, the priciest ~10–16% above.
+- **Electric cars are still rare in the used market**: 21 cars (0.8%), almost all 2024–2026 and led by BYD;
+  hybrids are 36 (1.4%). Weekly snapshots track how that share grows.
+- **Dealers price very differently**: the cheapest list ~8–11% below comparable cars, the priciest ~10–16% above.
 
 Full, regenerated-weekly output: [`reports/REPORT.md`](reports/REPORT.md).
 
