@@ -87,73 +87,67 @@ Un valor bajo significa que el modelo **retiene mejor su valor**. Muestras chica
 | Fiat       | Mobi     |         20 |          10150 |             nan   |                 nan   |                     5.4 |
 
 ### Desde 0 km
-Valor que conserva un usado frente al **precio de lista 0 km actual** del mismo modelo, con
-`log(precio usado / precio 0 km) ~ antigüedad` sobre autos de hasta 6 años (misma generación).
-El precio 0 km es la mediana de las versiones del modelo en la
-[lista de precios de Autoblog Uruguay](https://www.autoblog.com.uy/p/precios-0km.html)
-(1051 versiones, actualizada al 2026-10-12; precios en USD con IVA). Solo cuentan las versiones
-**comparables**: misma motorización que los usados (un Captiva naftero no se compara con el Captiva EV) y sin
-sub-modelos que casi no aparecen entre los usados (Swift Sport). Se descartan los modelos con menos de 10 usados
-recientes o con una curva sin sentido (que *sube* con la edad).
+Valor que conserva un usado frente a **lo que costaba 0 km el mismo modelo en su año**. Un Onix 2021 se
+compara con el precio del Onix 0 km en 2021, no con el de hoy: los precios nuevos cambian bastante con los años y
+usar el de hoy distorsiona la depreciación.
 
-Como no se sabe la versión de cada usado, hay dos lecturas: `kept_3y_pct` contra la **versión mediana** y
-`kept_3y_vs_base_pct` contra la **más barata**. El valor real está entre las dos.
+Los precios 0 km de cada año salen de la
+[lista de Autoblog Uruguay](https://www.autoblog.com.uy/p/precios-0km.html) tal como la guardó el
+[Internet Archive](https://web.archive.org/) a comienzos de cada año (2019–2026, 5,926
+precios). Por ejemplo, la mediana de las versiones comparables del Onix:
 
-Ojo: es el precio de lista **de hoy**, no el que pagó el primer dueño, y no incluye las bonificaciones que suelen
-dar las concesionarias (lo que exagera un poco la pérdida). Es una aproximación razonable a "cuánto pierde un auto
-desde nuevo", no un valor exacto.
+|   year |   new_price |   base_price |   versions |
+|-------:|------------:|-------------:|-----------:|
+|   2019 |       17290 |        14490 |          5 |
+|   2020 |       18440 |        16290 |          4 |
+|   2021 |       19990 |        16490 |          9 |
+|   2022 |       20490 |        16990 |          9 |
+|   2023 |       21690 |        17990 |          9 |
+|   2024 |       22390 |        17190 |          9 |
+|   2025 |       22690 |        17490 |          9 |
+|   2026 |       23490 |        18990 |          7 |
+
+Solo cuentan versiones **comparables** (misma motorización que los usados y sin sub-modelos que casi no aparecen
+entre ellos, como el Swift Sport). Se ajusta `log(precio usado / precio 0 km de su año) ~ antigüedad` por modelo y
+se lee a 1, 3 y 5 años, **solo dentro de las edades que cubren los datos** (un hueco aparece vacío). Como no se sabe
+la versión de cada usado, `kept_3y_pct` compara contra la versión mediana y `kept_3y_vs_base_pct` contra la más
+barata: el valor real está entre las dos.
+
+Una curva **plana** (igual % a 1, 3 y 5 años) no es un error: significa que los usados de ese modelo acompañaron
+la suba de su precio 0 km, así que uno de 2019 vale, respecto de lo que costó, lo mismo que uno de 2024.
+
+Límites: son precios de lista (sin las bonificaciones de las concesionarias, lo que exagera un poco la pérdida) y
+precios publicados de usados (no de venta).
 
 ![](from_new.png)
 
-<details><summary>Versiones 0 km usadas para cada modelo</summary>
-
-| brand      | model   | versions_used                                                                                                                                                                                                                                                                                                   |
-|:-----------|:--------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Fiat       | Strada  | Strada Endurance Cabina Plus 1.3 M/T (16,490) · Strada Freedom Cabina Doble 1.3 M/T (17,990) · Strada Volcano Cabina Doble 1.3 CVT (21,290) · Strada Ultra Cabina Doble Turbo 200 1.0 CVT (22,990)                                                                                                              |
-| Volkswagen | Saveiro | Saveiro Cabina Simple 1.6 (17,590) · Saveiro Cabina Doble 1.6 (17,990) · Saveiro Cabina Doble Extreme 1.6 (20,690) · Saveiro Cabina Doble Extreme Plus 1.6 (21,990)                                                                                                                                             |
-| Geely      | Gx3     | GX3 Pro 1.5 GB M/T (16,990) · GX3 Pro 1.5 GC M/T (17,990) · GX3 Pro 1.5 GF CVT (20,990)                                                                                                                                                                                                                         |
-| Renault    | Oroch   | Oroch Cargo 1.6 SCe M/T 2WD (19,990) · Oroch Cargo Pro 1.6 SCe M/T 2WD (20,990) · Oroch Zen 1.6 SCe M/T 2WD (21,900) · Oroch Intens Outsider 1.6 SCe M/T 2WD (24,490) · Oroch Intens 1.3 TCe CVT 2WD (25,990) · Oroch Intens Outsider 1.3 TCe CVT 2WD (27,490) · Oroch Intens Outsider 1.3 TCe M/T 4WD (28,990) |
-| Suzuki     | Celerio | Celerio 1.0 GL M/T (15,990) · Celerio 1.0 GL AMT (17,290)                                                                                                                                                                                                                                                       |
-| Chevrolet  | Montana | Montana LT 1.2 Turbo A/T (21,990) · Montana LTZ 1.2 Turbo A/T (24,990) · Montana Premier 1.2 Turbo A/T (26,990) · Montana RS 1.2 Turbo A/T (27,490)                                                                                                                                                             |
-| Renault    | Kwid    | Kwid Evolution 1.0 SCe (14,500) · Kwid Techno 1.0 SCe (15,200) · Kwid Bitono 1.0 SCe (15,600) · Kwid Outsider 1.0 SCe (15,900)                                                                                                                                                                                  |
-| Citroën    | C3      | C3 1.0 M/T Live (15,990) · C3 1.0 M/T Live Pack (16,990) · C3 1.0 M/T Feel (17,990) · C3 1.6 16v Feel Pack AT6 (20,990) · C3 You! 1.0 Turbo 200 CVT (22,990)                                                                                                                                                    |
-| Chevrolet  | Onix    | Onix LT 1.0 (18,990) · Onix LTZ 1.0 Turbo M/T (22,490) · Onix Premier 1.0 Turbo A/T (24,790) · Onix RS 1.0 Turbo A/T (24,990) · Onix Plus LT 1.0 (19,990) · Onix Plus LTZ 1.0 Turbo M/T (23,490) · Onix Plus Premier 1.0 Turbo A/T (25,990)                                                                     |
-| Suzuki     | Swift   | Swift Hybrid 1.2 GLX M/T (22,990) · Swift Hybrid 1.2 GLX CVT (24,990)                                                                                                                                                                                                                                           |
-| Chevrolet  | Captiva | Captiva XL LTZ 1.5 T FWD CVT (34,990) · Captiva XL Premier 1.5 T FWD CVT (36,990)                                                                                                                                                                                                                               |
-| Chevrolet  | Tracker | Tracker LT 1.2 Turbo A/T (27,990) · Tracker LTZ 1.2 Turbo A/T (31,990) · Tracker Premier 1.2 Turbo A/T (33,790) · Tracker RS 1.2 Turbo A/T (33,990)                                                                                                                                                             |
-| Hyundai    | Hb20    | HB20 1.0 Comfort M/T (16,990) · HB20 1.0 Premium M/T (19,990) · HB20 1.6 Premium M/T (22,900) · HB20 1.6 Premium A/T (24,990) · HB20 1.6 Unique M/T (25,990) · HB20 1.6 Unique A/T (27,990)                                                                                                                     |
-| Volkswagen | Nivus   | Nivus Comfortline 170 TSI 1.0 M/T (25,690) · Nivus Comfortline 200 TSI 1.0 A/T (28,990) · Nivus Highline 200 TSI 1.0 A/T (32,990) · Nivus Outfit 200 TSI 1.0 A/T (33,990) · Nivus GTS 250 TSI 1.4 A/T (35,990)                                                                                                  |
-| Nissan     | Kicks   | Kicks 1.0T Sense EDC (31,990) · Kicks 1.0T Advance EDC (33,990) · Kicks 1.0T Exclusive EDC (36,490)                                                                                                                                                                                                             |
-| Nissan     | Versa   | Versa Drive Sense 1.6 M/T (25,990) · Versa 1.6 Sense M/T (27,990) · Versa 1.6 Sense CVT (28,990) · Versa 1.6 Advance CVT (29,990) · Versa 1.6 Exclusive CVT (32,990)                                                                                                                                            |
-| Peugeot    | 208     | 208 Active 1.0 BVM5 (17,990) · 208 Style 1.0 BVM5 (19,990) · 208 Allure 1.6 VTi BVM5 (24,990) · 208 Allure 1.0 Turbo 200 CVT (25,990) · 208 GT 1.0 Turbo 200 CVT (28,490)                                                                                                                                       |
-| Chevrolet  | S10     | S10 WT 2.8 CTDI 4x2 M/T (47,568) · S10 WT 2.8 CTDI 4x4 M/T (51,990) · S10 WT 2.8 CTDI 4x4 AT8 (55,990) · S10 Z71 2.8 CTDI 4x4 AT8 (59,990) · S10 LTZ 2.8 CTDI 4x4 AT8 (65,990) · S10 High Country 2.8 CTDI 4x4 AT8 (67,990)                                                                                     |
-| Nissan     | Sentra  | Sentra 2.0 Advance CVT (39,990) · Sentra 2.0 SR Platinum CVT (42,990)                                                                                                                                                                                                                                           |
-| Renault    | Duster  | Duster Intens Plus 1.6 SCe M/T (24,500) · Duster Intens Plus 1.6 SCe CVT (24,990) · Duster Iconic 1.6 SCe CVT (30,800) · Duster Iconic Outsider 1.3 TCe CVT (31,200)                                                                                                                                            |
-
-</details>
-
-| brand      | model   |   new_price |   base_price |   versions |   used_listings |   median_used_age |   kept_1y_pct |   kept_3y_pct |   kept_5y_pct |   kept_3y_vs_base_pct |
-|:-----------|:--------|------------:|-------------:|-----------:|----------------:|------------------:|--------------:|--------------:|--------------:|----------------------:|
-| Fiat       | Strada  |       19640 |        16490 |          4 |              30 |               3.5 |          93.3 |          84.2 |          76.1 |                 100   |
-| Volkswagen | Saveiro |       19340 |        17590 |          4 |              12 |               3   |          82.2 |          78.4 |          74.9 |                  86.2 |
-| Geely      | Gx3     |       17990 |        16990 |          3 |              12 |               3.5 |          84.1 |          77.2 |          70.9 |                  81.7 |
-| Renault    | Oroch   |       24490 |        19990 |          7 |              29 |               4   |          92.3 |          74.7 |          60.4 |                  91.5 |
-| Suzuki     | Celerio |       16640 |        15990 |          2 |              17 |               5   |          80.2 |          74.7 |          69.6 |                  77.7 |
-| Chevrolet  | Montana |       25990 |        21990 |          4 |              22 |               2   |          83.4 |          71.5 |          61.3 |                  84.5 |
-| Renault    | Kwid    |       15400 |        14500 |          4 |              30 |               5   |          73.8 |          69.5 |          65.4 |                  73.8 |
-| Citroën    | C3      |       17990 |        15990 |          5 |              15 |               2   |          78.5 |          68   |          58.9 |                  76.5 |
-| Chevrolet  | Onix    |       23490 |        18990 |          7 |             153 |               3   |          70.6 |          66.4 |          62.5 |                  82.1 |
-| Suzuki     | Swift   |       23990 |        22990 |          2 |              11 |               3   |          68.8 |          66.1 |          63.6 |                  69   |
-| Chevrolet  | Captiva |       35990 |        34990 |          2 |              12 |               4   |          78.1 |          65.7 |          55.2 |                  67.6 |
-| Chevrolet  | Tracker |       32890 |        27990 |          4 |              45 |               5   |          70.7 |          63.8 |          57.6 |                  75   |
-| Hyundai    | Hb20    |       23945 |        16990 |          6 |              43 |               3   |          65.6 |          62.9 |          60.3 |                  88.6 |
-| Volkswagen | Nivus   |       32990 |        25690 |          5 |              12 |               5   |          65.8 |          61.9 |          58.2 |                  79.5 |
-| Nissan     | Kicks   |       33990 |        31990 |          3 |              25 |               3   |          69.3 |          61.5 |          54.5 |                  65.3 |
-| Nissan     | Versa   |       28990 |        25990 |          5 |              21 |               3   |          71.1 |          61.4 |          53   |                  68.5 |
-| Peugeot    | 208     |       24990 |        17990 |          5 |              31 |               3   |          72.5 |          60.3 |          50.2 |                  83.8 |
-| Chevrolet  | S10     |       57990 |        47568 |          6 |              11 |               2   |          66.6 |          57   |          48.9 |                  69.5 |
-| Nissan     | Sentra  |       41490 |        39990 |          2 |              14 |               4   |          69.2 |          56.3 |          45.8 |                  58.4 |
-| Renault    | Duster  |       27895 |        24500 |          4 |              11 |               4   |          62.8 |          56.1 |          50   |                  63.9 |
+| brand      | model    |   used_listings | years_covered   |   median_used_age |   kept_1y_pct |   kept_3y_pct |   kept_5y_pct |   kept_3y_vs_base_pct |
+|:-----------|:---------|----------------:|:----------------|------------------:|--------------:|--------------:|--------------:|----------------------:|
+| Fiat       | Mobi     |              14 | 2019–2026       |               7   |          90.8 |          86.4 |          82.1 |                  90   |
+| Fiat       | Strada   |              32 | 2019–2026       |               4   |          87.9 |          84.9 |          82   |                  98.1 |
+| Chevrolet  | Joy      |              14 | 2020–2022       |               5   |         nan   |          82.9 |          80.5 |                  82.9 |
+| Volkswagen | Saveiro  |              15 | 2019–2026       |               3   |          76.9 |          80   |          83.2 |                  94.2 |
+| Chevrolet  | Montana  |              22 | 2023–2025       |               2   |          85   |          75.5 |         nan   |                  89.9 |
+| Geely      | Gx3      |              10 | 2020–2026       |               4   |          80.6 |          74.3 |          68.5 |                  76.8 |
+| Renault    | Oroch    |              32 | 2019–2025       |               4   |          79.8 |          73.5 |          67.8 |                  81.6 |
+| Chevrolet  | Onix     |             162 | 2019–2025       |               4   |          71.8 |          72.8 |          73.9 |                  87.8 |
+| Chevrolet  | Captiva  |              12 | 2020–2023       |               4   |         nan   |          72.1 |          59.3 |                  76.8 |
+| Volkswagen | Nivus    |              12 | 2021–2024       |               5   |          75.4 |          71.6 |          68   |                  75.6 |
+| Volkswagen | Gol      |              10 | 2020–2023       |               4   |         nan   |          70.6 |          68.4 |                  73.9 |
+| Renault    | Kwid     |              36 | 2019–2026       |               5   |          69.5 |          70.5 |          71.5 |                  76.4 |
+| Hyundai    | Hb20     |              44 | 2019–2026       |               3   |          69.5 |          70.2 |          70.8 |                  98.3 |
+| Nissan     | Kicks    |              29 | 2019–2026       |               3   |          78.8 |          69.8 |          61.8 |                  75.2 |
+| Nissan     | Versa    |              21 | 2020–2025       |               3   |          67.5 |          69.6 |          71.8 |                  80.6 |
+| Chevrolet  | Tracker  |              46 | 2019–2026       |               5   |          71.1 |          68.3 |          65.6 |                  74.7 |
+| Chevrolet  | Cruze    |              12 | 2019–2023       |               3.5 |         nan   |          67.9 |          60.9 |                  67.9 |
+| Chevrolet  | S10      |              11 | 2021–2026       |               2   |          70.5 |          65   |          60   |                 100   |
+| Nissan     | Sentra   |              14 | 2020–2025       |               4   |          72.2 |          63.4 |          55.6 |                  69.2 |
+| Citroën    | C4       |              15 | 2019–2025       |               4   |          73.3 |          63.4 |          54.9 |                  68.7 |
+| Peugeot    | 208      |              36 | 2019–2025       |               3   |          72.3 |          62.6 |          54.3 |                  75.2 |
+| Citroën    | C3       |              17 | 2019–2025       |               2   |          76.8 |          61.3 |          48.9 |                  69.6 |
+| Renault    | Duster   |              12 | 2019–2025       |               4   |          60.2 |          57.4 |          54.7 |                  66.3 |
+| Peugeot    | 2008     |              12 | 2019–2024       |               4   |          59   |          55.2 |          51.6 |                  75.6 |
+| Ford       | Ecosport |              14 | 2019–2021       |               6.5 |         nan   |         nan   |          55.6 |                 nan   |
 
 
 ## 3. Kilometraje

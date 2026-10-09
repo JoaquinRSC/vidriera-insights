@@ -15,11 +15,12 @@ import numpy as np
 import pandas as pd
 
 from . import analysis, model
-from .fetch import load_cards, load_new_cars
+from .fetch import load_cards, load_new_cars, load_new_price_history
 
 ROOT = Path(__file__).resolve().parents[2]
 CACHE = ROOT / "data" / "vehicle_cards.csv"
 NEW_CARS = ROOT / "data" / "new_cars.csv"
+PRICE_HISTORY = ROOT / "data" / "new_price_history.csv"
 OUT = ROOT / "web" / "data.json"
 
 MIN_LISTINGS = 5  # models with fewer used cars aren't offered in the estimator
@@ -77,20 +78,26 @@ def model_grids(df: pd.DataFrame, models: dict, margin: float, today_year: int) 
     return entries
 
 
-def attach_depreciation(entries: list[dict], df: pd.DataFrame, new_cars: pd.DataFrame) -> None:
+def attach_depreciation(entries: list[dict], df: pd.DataFrame, history: pd.DataFrame,
+                        new_cars: pd.DataFrame) -> None:
+    """Depreciation figures, 0 km price of each model year, and today's 0 km price."""
     by_model = analysis.model_depreciation(df).set_index(["brand", "model"])
-    from_new = analysis.depreciation_from_new(df, new_cars).set_index(["brand", "model"])
+    from_new = analysis.depreciation_from_new(df, history).set_index(["brand", "model"])
     for entry in entries:
         key = (entry["brand"], entry["model"])
+        cars = df[(df["brand"] == key[0]) & (df["model"] == key[1])]
         if key in by_model.index:
             row = by_model.loc[key]
             entry["depreciation"] = {k: None if pd.isna(row[k]) else float(row[k])
                                      for k in ("yearly_loss_pct", "loss_per_10k_km_pct", "total_yearly_loss_pct")}
         if key in from_new.index:
             row = from_new.loc[key]
-            entry["from_new"] = {k: float(row[k]) for k in
-                                 ("new_price", "base_price", "kept_1y_pct", "kept_3y_pct", "kept_5y_pct",
-                                  "kept_3y_vs_base_pct")}
+            entry["from_new"] = {k: None if pd.isna(row[k]) else float(row[k])
+                                 for k in ("kept_1y_pct", "kept_3y_pct", "kept_5y_pct", "kept_3y_vs_base_pct")}
+        by_year = analysis.new_price_by_year(*key, history, cars)
+        entry["new_by_year"] = {str(int(r.year)): int(r.new_price) for r in by_year.itertuples()}
+        today = analysis.new_price_for(*key, new_cars, cars)
+        entry["new_today"] = None if today is None else int(today)
 
 
 def main() -> None:
@@ -101,12 +108,13 @@ def main() -> None:
     today = date.today()
     df = analysis.clean(load_cards(CACHE, refresh=args.refresh), today.year)
     new_cars = load_new_cars(NEW_CARS, refresh=args.refresh)
+    history = load_new_price_history(PRICE_HISTORY, sorted(new_cars["brand"].unique()), refresh=args.refresh)
 
     models, margin = model.fit_price_range(df)
     coverage = model.interval_coverage(df).mean()
     cv = model.cross_validate(df).mean()
     entries = model_grids(df, models, margin, today.year)
-    attach_depreciation(entries, df, new_cars)
+    attach_depreciation(entries, df, history, new_cars)
     electrified = analysis.powertrain_summary(df).reset_index()
 
     payload = {
@@ -114,6 +122,7 @@ def main() -> None:
         "listings": len(df),
         "dealers": int(df["source_name"].nunique()),
         "new_prices_updated": None if new_cars.empty else new_cars["list_updated"].dropna().iloc[0],
+        "new_price_years": [int(history["year"].min()), int(history["year"].max())],
         "quality": {
             "mape_pct": round(float(cv["mape_all_pct"]), 1),
             "interval_coverage_pct": round(float(coverage["calibrated_coverage_pct"]), 1),

@@ -73,13 +73,22 @@ def test_depreciation_from_new_matches_versions_by_prefix():
                         "price": [20000.0, 24000.0, 26000.0]})
     assert analysis.new_price_for("Chevrolet", "Onix", new) == 24000.0  # median of the three
     assert analysis.new_price_for("Chevrolet", "Tracker", new) is None
-    # Used Onix keep 80% at age 1 and lose 10% per year after that. A third of them are
-    # "Plus", so the Onix Plus 0 km version stays comparable and the median remains 24,000.
-    rows = [{"brand": "Chevrolet", "model": "Onix", "age": a, "year": 2026 - a, "version": version,
-             "price": 24000 * 0.8 * 0.9 ** (a - 1)} for a in (1, 2, 3, 4) for version in ("LT", "Premier", "Plus LTZ")]
-    table = analysis.depreciation_from_new(make_df(rows), new)
+
+
+def test_depreciation_from_new_uses_the_price_of_each_model_year():
+    # The 0 km price rose 5% a year (20,000 in 2022 -> 24,310 in 2026). Each used car keeps
+    # 80% of ITS year's new price at age 1 and loses 10% per year after that, so measured
+    # against its own year it shows exactly that curve; today's price would overstate the loss.
+    history = pd.DataFrame([{"year": y, "brand": "Chevrolet", "name": "Onix 1.0 LT",
+                             "price": 20000 * 1.05 ** (y - 2022)} for y in range(2022, 2027)])
+    rows = [{"brand": "Chevrolet", "model": "Onix", "age": a, "year": 2026 - a, "version": "LT",
+             "price": 20000 * 1.05 ** (2026 - a - 2022) * 0.8 * 0.9 ** (a - 1)} for a in (1, 2, 3, 4) for _ in range(3)]
+    table = analysis.depreciation_from_new(make_df(rows), history)
     assert table.loc[0, "kept_1y_pct"] == pytest.approx(80.0, abs=0.1)
     assert table.loc[0, "kept_3y_pct"] == pytest.approx(64.8, abs=0.1)
+    assert table.loc[0, "kept_5y_pct"] == pytest.approx(52.5, abs=0.1)  # one year past the data: allowed
+    by_year = analysis.new_price_by_year("Chevrolet", "Onix", history)
+    assert by_year["year"].tolist() == [2022, 2023, 2024, 2025, 2026]
 
 
 def test_powertrain_summary_counts_share():

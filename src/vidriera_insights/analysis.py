@@ -178,51 +178,65 @@ def new_price_for(brand: str, model: str, new: pd.DataFrame, used: pd.DataFrame 
     return float(versions["price"].median()) if len(versions) else None
 
 
-def depreciation_from_new(
-    used: pd.DataFrame, new: pd.DataFrame, min_used: int = 10, max_age: int = 6
-) -> pd.DataFrame:
-    """Value kept vs. the current 0 km list price, for models sold both new and used.
+def new_price_by_year(brand: str, model: str, history: pd.DataFrame,
+                      used: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Median and cheapest comparable 0 km price of a model for each list year."""
+    rows = []
+    for year, prices in history.groupby("year"):
+        versions = new_versions_for(brand, model, prices, used)
+        if len(versions):
+            rows.append({"year": int(year), "new_price": float(versions["price"].median()),
+                         "base_price": float(versions["price"].min()), "versions": len(versions)})
+    return pd.DataFrame(rows, columns=["year", "new_price", "base_price", "versions"])
 
-    Fits ``log(used_price / new_price) = a + b*age`` per model and reads the curve at
-    1, 3 and 5 years. The intercept is kept free: the jump from "0 km" to "used" (the
-    first-owner discount) is real and shouldn't be forced to zero. Only cars up to
-    ``max_age`` are used, so an older generation of the model doesn't drag the
-    comparison against today's list price.
+
+def depreciation_from_new(
+    used: pd.DataFrame, history: pd.DataFrame, min_used: int = 10, max_age: int = 7
+) -> pd.DataFrame:
+    """Value kept vs. what the same model cost new **in its own year**.
+
+    Each used car is compared with the 0 km list price of its model year (Autoblog's
+    list as archived at the start of that year), so price changes over time don't
+    distort the result. Then ``log(used_price / new_price_that_year) = a + b*age`` is
+    fitted per model and read at 1, 3 and 5 years; the free intercept captures the
+    first-owner discount. ``max_age`` keeps the comparison within the years the
+    archive covers and the current generation.
     """
     rows = []
     recent = used[used["age"].between(0, max_age)].dropna(subset=["model"])
     for (brand, model), group in recent.groupby(["brand", "model"]):
-        if len(group) < min_used or group["age"].nunique() < 2:
+        if len(group) < min_used:
             continue
-        versions = new_versions_for(brand, model, new, group)
-        if versions.empty:
+        by_year = new_price_by_year(brand, model, history, group)
+        if by_year.empty:
             continue
-        new_price, base_price = versions["price"].median(), versions["price"].min()
-        slope, intercept = np.polyfit(group["age"], np.log(group["price"] / new_price), 1)
-        if slope >= 0:  # value rising with age means the sample is noise, not a curve
+        cars = group.merge(by_year, on="year", how="inner")
+        if len(cars) < min_used or cars["age"].nunique() < 2:
             continue
-        kept = {f"kept_{t}y_pct": round(float(np.exp(intercept + slope * t)) * 100, 1) for t in (1, 3, 5)}
-        # The used car's trim is unknown, so also read the curve against the cheapest
-        # version: the truth sits between "vs. median version" and "vs. base version".
-        kept_3y_vs_base = round(min(kept["kept_3y_pct"] * new_price / base_price, 100.0), 1)
-        rows.append({"brand": brand, "model": model, "new_price": new_price, "base_price": base_price,
-                     "versions": len(versions), "used_listings": len(group),
-                     "median_used_age": group["age"].median(), **kept, "kept_3y_vs_base_pct": kept_3y_vs_base})
-    columns = ["brand", "model", "new_price", "base_price", "versions", "used_listings", "median_used_age",
+        slope, intercept = np.polyfit(cars["age"], np.log(cars["price"] / cars["new_price"]), 1)
+        # A flat curve is real (used prices tracking rising 0 km prices, as with the Onix);
+        # only a clear rise with age (> 2% a year) is treated as noise.
+        if slope > 0.02:
+            continue
+        # Only read the curve at ages the data actually covers (±1 year): extrapolating a
+        # 2019–2021 sample to a 1-year-old car produced nonsense like "keeps 168%".
+        low_age, high_age = cars["age"].min() - 1, cars["age"].max() + 1
+        kept = {f"kept_{t}y_pct": round(float(np.exp(intercept + slope * t)) * 100, 1)
+                if low_age <= t <= high_age else np.nan for t in (1, 3, 5)}
+        if any(v > 105 for v in kept.values() if not np.isnan(v)):
+            continue  # a used car worth more than new means bad matching, not appreciation
+        # The used car's trim is unknown: also read it against the cheapest version.
+        base_ratio = float((cars["new_price"] / cars["base_price"]).median())
+        kept_3y = kept["kept_3y_pct"]
+        rows.append({
+            "brand": brand, "model": model, "used_listings": len(cars),
+            "years_covered": f"{int(cars['year'].min())}–{int(cars['year'].max())}",
+            "median_used_age": cars["age"].median(), **kept,
+            "kept_3y_vs_base_pct": np.nan if np.isnan(kept_3y) else round(min(kept_3y * base_ratio, 100.0), 1),
+        })
+    columns = ["brand", "model", "used_listings", "years_covered", "median_used_age",
                "kept_1y_pct", "kept_3y_pct", "kept_5y_pct", "kept_3y_vs_base_pct"]
     return pd.DataFrame(rows, columns=columns).sort_values("kept_3y_pct", ascending=False).reset_index(drop=True)
-
-
-def new_versions_table(used: pd.DataFrame, new: pd.DataFrame, models: pd.DataFrame) -> pd.DataFrame:
-    """Which 0 km versions priced each model, so the matching can be audited."""
-    rows = []
-    recent = used.dropna(subset=["model"])
-    for brand, model in models[["brand", "model"]].itertuples(index=False):
-        group = recent[(recent["brand"] == brand) & (recent["model"] == model)]
-        versions = new_versions_for(brand, model, new, group)
-        rows.append({"brand": brand, "model": model,
-                     "versions_used": " · ".join(f"{n} ({p:,.0f})" for n, p in versions[["name", "price"]].values)})
-    return pd.DataFrame(rows, columns=["brand", "model", "versions_used"])
 
 
 def powertrain_summary(df: pd.DataFrame) -> pd.DataFrame:

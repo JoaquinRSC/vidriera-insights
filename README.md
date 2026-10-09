@@ -13,8 +13,9 @@ estimated price with a calibrated 80% range, its depreciation and the similar ca
 
 - **A machine-learning price model matches the comparables method (10.6% vs 10.6% error) and prices 100% of
   the stock** — the comparables method can only price ~56% of cars (the rest have too few similar listings).
-- **Value kept 3 years after buying new varies a lot**: a Fiat Strada keeps ~84% of today's 0 km price, a
-  Chevrolet Onix ~66% and a Peugeot 208 ~60%.
+- **Value kept vs. what the car cost new in its year varies a lot**: after 3 years a Fiat Strada keeps ~85%, a
+  Chevrolet Tracker ~68% and a Peugeot 208 ~63%; the Onix holds a flat ~72% at any age because used prices
+  tracked its rising 0 km price (USD 19,290 in 2019 → 24,140 in 2026).
 - **Separating age from mileage**, popular models lose between ~1.6% and ~7% per year from age alone, plus
   ~1–2.5% per extra 10,000 km.
 - **Within the same model and year, every extra 10,000 km costs ≈ USD 190.**
@@ -31,7 +32,7 @@ Full, regenerated-weekly output: [`reports/REPORT.md`](reports/REPORT.md).
 | Brand and segment summaries | pandas group-bys with a minimum sample size per group; missing fuel inferred from the title ("EV", "Hybrid", "Seagull"…) |
 | Overall depreciation curve | median price by age as % of 0–1 year-old cars *in the used stock*; descriptive only, since it mixes models (newer stock skews to SUVs and Chinese brands) |
 | **Per-model depreciation** | two log-linear fits per model: `log(price) ~ age` (total yearly loss a buyer sees) and `log(price) ~ age + km` (loss from age alone, and per 10,000 km) |
-| **Depreciation from new** | `log(used / 0 km list price) ~ age` on cars up to 6 years old (same generation); 0 km price = median of the model’s comparable versions in Autoblog’s list (same powertrain, no rare sub-models such as "Swift Sport"), read against the median and the cheapest version since the used trim is unknown; free intercept captures the first-owner discount |
+| **Depreciation from new** | each used car is compared with what its model cost **new in its own year**: Autoblog's 0 km list as archived by the Internet Archive each year since 2019 (~6,000 prices, brand read from the importer's website), comparable versions only (same powertrain, no rare sub-models); `log(used / 0 km price of its year) ~ age`, read only within the ages the data covers |
 | Cost of mileage | within-group regression: prices and km are demeaned per (brand, model, year), so age doesn't leak into the km effect |
 | **Price model** | `HistGradientBoostingRegressor` on brand, model, fuel, gearbox, body, age and km; `log(price)` target; rare models collapsed using training data only; 5-fold cross-validation; permutation importance |
 | Electric & hybrid market | share, price, age and brands; share tracked over time from snapshots |
@@ -65,7 +66,7 @@ pytest && ruff check src tests
 | `src/vidriera_insights/report.py` | CLI that renders the charts and the Markdown report. |
 | `src/vidriera_insights/export.py` | Trains the median and quantile models on every car and writes `web/data.json` for the estimator. |
 | `web/` | Static estimator (HTML, CSS, vanilla JS, Chart.js) on Vercel; reads the latest `data.json` from this repo. |
-| `tests/` | 20 tests, including synthetic markets with a known price rule the model and the regressions must recover. |
+| `tests/` | 23 tests, including synthetic markets with a known price rule the model and the regressions must recover. |
 | `.github/workflows/` | CI (ruff + pytest) on every push; a weekly job that refreshes data and commits the new report. |
 
 ## Limitations
@@ -73,6 +74,6 @@ pytest && ruff check src tests
 - Listed prices, not transaction prices: what dealers ask, not what buyers pay.
 - Per-model depreciation is a cross-section (today's market at different ages), not one car followed over time;
   generations and trims mix, which the 6-year cap only partly controls.
-- "From new" uses **today's** 0 km list price, not what the first owner paid, and matches versions by model name.
+- "From new" uses list prices from the start of each year (dealer discounts not included) and matches versions by model name.
 - Vidriera started collecting on 2026-10-07, so time-on-market and trend sections need a few weeks of history.
 - About half the listings don't state gearbox or body type; the model treats them as "unknown".

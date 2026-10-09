@@ -93,11 +93,17 @@ function render() {
     chips.push(chip(`Pierde <strong>${pct(d.yearly_loss_pct)}%</strong> por año de antigüedad`))
     if (d.loss_per_10k_km_pct > 0) chips.push(chip(`y <strong>${pct(d.loss_per_10k_km_pct)}%</strong> cada 10.000 km`))
   }
-  const n = entry.from_new
-  if (n) {
-    chips.push(chip(`0 km hoy: <strong>${usd.format(n.new_price)}</strong>`))
-    chips.push(chip(`A los 3 años conserva <strong>${Math.round(n.kept_3y_pct)}–${Math.round(n.kept_3y_vs_base_pct)}%</strong>`))
+  const newThen = entry.new_by_year?.[String(year)]
+  if (newThen) {
+    chips.push(chip(`0 km en ${year}: <strong>${usd.format(newThen)}</strong> · hoy vale <strong>${Math.round((mid / newThen) * 100)}%</strong>`))
   }
+  const kept = entry.from_new?.kept_3y_pct
+  if (kept != null) {
+    const high = entry.from_new.kept_3y_vs_base_pct
+    const range = high != null && Math.round(high) > Math.round(kept) ? `${Math.round(kept)}–${Math.round(high)}%` : `${Math.round(kept)}%`
+    chips.push(chip(`A los 3 años suele conservar <strong>${range}</strong> de su precio 0 km`))
+  }
+  if (entry.new_today) chips.push(chip(`Un 0 km hoy cuesta <strong>${usd.format(entry.new_today)}</strong>`))
   chips.push(chip(`<strong>${entry.listings}</strong> publicados hoy`))
   $('chips').replaceChildren(...chips)
 
