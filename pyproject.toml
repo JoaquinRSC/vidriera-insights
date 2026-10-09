@@ -1,0 +1,15 @@
+[project]
+name = "vidriera-insights"
+version = "0.1.0"
+description = "Market analysis of Uruguayan used-car dealer stock, built on Vidriera's public data"
+requires-python = ">=3.11"
+dependencies = ["pandas>=2.2", "matplotlib>=3.8", "requests>=2.31", "tabulate>=0.9"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
