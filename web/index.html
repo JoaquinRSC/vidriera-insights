@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tasador de usados — Vidriera Insights</title>
+  <meta name="description" content="¿Cuánto vale un auto usado en Uruguay? Precio estimado y rango, calculados con machine learning sobre el stock de 27 automotoras.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232457f5'/%3E%3Ctext x='16' y='22' font-family='sans-serif' font-size='18' font-weight='700' fill='white' text-anchor='middle'%3E%24%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Vidriera Insights · Tasador</p>
+      <h1>¿Cuánto vale un auto usado en Uruguay?</h1>
+      <p class="lede">Elegí el auto y te decimos a qué precio se publica, con un rango honesto. Calculado con
+        machine learning sobre <strong id="stat-listings">…</strong> autos de <strong id="stat-dealers">…</strong>
+        automotoras, actualizado al <span id="stat-date">…</span>.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card form" aria-label="Datos del auto">
+      <label>Marca<select id="brand"></select></label>
+      <label>Modelo<select id="model"></select></label>
+      <label>Año<select id="year"></select></label>
+      <label>Kilómetros
+        <span class="km-row">
+          <input id="km" type="range" min="0" step="1000">
+          <input id="km-number" type="number" min="0" step="1000" inputmode="numeric" aria-label="Kilómetros">
+        </span>
+      </label>
+    </section>
+
+    <section class="card result" aria-live="polite">
+      <p class="muted" id="result-title"></p>
+      <p class="price" id="price">—</p>
+      <div class="range" aria-hidden="true"><span class="range-fill" id="range-fill"></span><span class="range-dot" id="range-dot"></span></div>
+      <p class="range-text"><span id="low">—</span><span>Rango probable</span><span id="high">—</span></p>
+      <p class="note">El <strong>80%</strong> de los autos parecidos se publica dentro de este rango: lo verificamos con
+        datos que el modelo nunca vio.</p>
+      <div class="chips" id="chips"></div>
+    </section>
+
+    <section class="card">
+      <h2>Precio según el año</h2>
+      <p class="muted">Con los mismos kilómetros. La banda es el rango del 80%.</p>
+      <div class="chart"><canvas id="chart" aria-label="Precio estimado por año"></canvas></div>
+    </section>
+
+    <section class="card">
+      <h2>Publicados ahora</h2>
+      <p class="muted" id="similar-caption"></p>
+      <ul class="similar" id="similar"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Eléctricos e híbridos</h2>
+      <div class="ev" id="ev"></div>
+      <p class="muted">Casi todos los eléctricos usados son de 2024 en adelante: el mercado de segunda mano recién empieza.</p>
+    </section>
+
+    <section class="card method">
+      <h2>Cómo se calcula</h2>
+      <ul>
+        <li>Un modelo de <strong>gradient boosting</strong> (scikit-learn) aprende el precio a partir de marca, modelo,
+          año, kilómetros, combustible, caja y carrocería. Error medio en validación cruzada: <strong id="q-mape">…</strong>.</li>
+        <li>El rango sale de <strong>regresión por cuantiles</strong> (percentiles 10 y 90) con <strong>calibración
+          conformal</strong>: sin calibrar cubría el <span id="q-raw">…</span> de los autos; calibrado cubre el
+          <strong id="q-cov">…</strong>.</li>
+        <li>La depreciación separa la pérdida <strong>por edad</strong> de la pérdida <strong>por kilómetros</strong>, y
+          la comparación con el 0 km usa la lista de precios de <a href="https://www.autoblog.com.uy/p/precios-0km.html">Autoblog Uruguay</a>.</li>
+        <li>Son precios <strong>publicados</strong> por automotoras, no precios de venta. Datos de
+          <a href="https://vidriera-uy.vercel.app">Vidriera</a>.</li>
+      </ul>
+      <p><a class="button" href="https://github.com/JoaquinRSC/vidriera-insights">Código y reporte completo en GitHub</a></p>
+    </section>
+  </main>
+
+  <footer class="wrap footer">
+    Hecho por <a href="https://joaquinrossi.vercel.app">Joaquín Rossi</a> · Python, pandas, scikit-learn
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"
+          integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous"></script>
+  <script src="app.js"></script>
+</body>
+</html>

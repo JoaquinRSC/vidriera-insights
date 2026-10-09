@@ -6,3 +6,5 @@ __pycache__/
 # Full download is a local cache; dated snapshots are versioned for trends.
 data/vehicle_cards.csv
 data/new_cars.csv
+
+.vercel

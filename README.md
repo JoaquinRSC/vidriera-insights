@@ -4,6 +4,9 @@ Data analysis and price modelling of the Uruguayan used-car market, in Python, o
 [Vidriera](https://vidriera-uy.vercel.app) — my aggregator of **~2,300 cars from 27 dealerships** — plus current
 0 km list prices from [Autoblog Uruguay](https://www.autoblog.com.uy/p/precios-0km.html).
 
+**Try the estimator: [vidriera-insights.vercel.app](https://vidriera-insights.vercel.app)** — pick a car, get its
+estimated price with a calibrated 80% range, its depreciation and the similar cars listed right now.
+
 ![Listed vs. predicted price](reports/predictions.png)
 
 ## Key findings (October 2026)
@@ -32,6 +35,7 @@ Full, regenerated-weekly output: [`reports/REPORT.md`](reports/REPORT.md).
 | Cost of mileage | within-group regression: prices and km are demeaned per (brand, model, year), so age doesn't leak into the km effect |
 | **Price model** | `HistGradientBoostingRegressor` on brand, model, fuel, gearbox, body, age and km; `log(price)` target; rare models collapsed using training data only; 5-fold cross-validation; permutation importance |
 | Electric & hybrid market | share, price, age and brands; share tracked over time from snapshots |
+| **Price range (web estimator)** | quantile gradient boosting (10th/90th percentiles) widened with **conformalized quantile regression**: the raw range covered only ~60% of unseen cars, the calibrated one covers 80% in cross-validation; evaluated on a (year × km) grid per model and exported as JSON for a static page |
 | Dealer pricing | median % vs. comparable-based fair price, optional anonymization |
 | Market history | dated snapshots saved on every refresh → stock, price and electrified-share trends |
 
@@ -47,6 +51,7 @@ python -m venv .venv
 pip install -e ".[dev]"
 python -m vidriera_insights.report --refresh            # download data, save snapshot, write reports/
 python -m vidriera_insights.report --anonymize-dealers  # same report without dealer names
+python -m vidriera_insights.export                      # rebuild web/data.json for the estimator
 pytest && ruff check src tests
 ```
 
@@ -58,7 +63,9 @@ pytest && ruff check src tests
 | `src/vidriera_insights/analysis.py` | Pure pandas/NumPy functions — no I/O, unit-tested with small fixtures. |
 | `src/vidriera_insights/model.py` | scikit-learn pipeline, evaluation against the comparables baseline, cross-validation, feature importance. |
 | `src/vidriera_insights/report.py` | CLI that renders the charts and the Markdown report. |
-| `tests/` | 17 tests, including synthetic markets with a known price rule the model and the regressions must recover. |
+| `src/vidriera_insights/export.py` | Trains the median and quantile models on every car and writes `web/data.json` for the estimator. |
+| `web/` | Static estimator (HTML, CSS, vanilla JS, Chart.js) on Vercel; reads the latest `data.json` from this repo. |
+| `tests/` | 20 tests, including synthetic markets with a known price rule the model and the regressions must recover. |
 | `.github/workflows/` | CI (ruff + pytest) on every push; a weekly job that refreshes data and commits the new report. |
 
 ## Limitations

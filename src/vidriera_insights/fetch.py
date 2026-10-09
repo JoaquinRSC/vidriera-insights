@@ -16,7 +16,7 @@ COLUMNS = [
     "id", "source_id", "source_name", "title", "price", "currency", "status",
     "first_seen_at", "days_listed", "brand", "model", "version", "year",
     "mileage_km", "fuel", "transmission", "body_type", "first_price",
-    "price_changes", "fair_price", "fair_sample_size", "price_vs_fair_pct",
+    "price_changes", "fair_price", "fair_sample_size", "price_vs_fair_pct", "url",
 ]
 SNAPSHOT_COLUMNS = [
     "id", "source_id", "title", "version", "price", "currency", "status", "brand", "model", "year",

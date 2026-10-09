@@ -1,7 +1,7 @@
 name: Weekly report
 
-# Every Monday: download fresh data, save a snapshot and regenerate the report,
-# so the market-trend and time-on-market sections build up history over time.
+# Every Monday: download fresh data, save a snapshot, regenerate the report and
+# the estimator data the website reads, so trends build up history over time.
 on:
   schedule:
     - cron: "0 12 * * 1"
@@ -21,10 +21,11 @@ jobs:
           cache: pip
       - run: pip install -e .
       - run: python -m vidriera_insights.report --refresh
+      - run: python -m vidriera_insights.export
       - name: Commit report and snapshot
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add reports data/snapshots
+          git add reports data/snapshots web/data.json
           git diff --cached --quiet || git commit -m "Update weekly market report"
           git push
