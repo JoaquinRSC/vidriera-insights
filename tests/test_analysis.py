@@ -73,9 +73,10 @@ def test_depreciation_from_new_matches_versions_by_prefix():
                         "price": [20000.0, 24000.0, 26000.0]})
     assert analysis.new_price_for("Chevrolet", "Onix", new) == 24000.0  # median of the three
     assert analysis.new_price_for("Chevrolet", "Tracker", new) is None
-    # Used Onix keep 80% at age 1 and lose 10% per year after that.
-    rows = [{"brand": "Chevrolet", "model": "Onix", "age": a, "year": 2026 - a,
-             "price": 24000 * 0.8 * 0.9 ** (a - 1)} for a in (1, 2, 3, 4) for _ in range(3)]
+    # Used Onix keep 80% at age 1 and lose 10% per year after that. A third of them are
+    # "Plus", so the Onix Plus 0 km version stays comparable and the median remains 24,000.
+    rows = [{"brand": "Chevrolet", "model": "Onix", "age": a, "year": 2026 - a, "version": version,
+             "price": 24000 * 0.8 * 0.9 ** (a - 1)} for a in (1, 2, 3, 4) for version in ("LT", "Premier", "Plus LTZ")]
     table = analysis.depreciation_from_new(make_df(rows), new)
     assert table.loc[0, "kept_1y_pct"] == pytest.approx(80.0, abs=0.1)
     assert table.loc[0, "kept_3y_pct"] == pytest.approx(64.8, abs=0.1)
